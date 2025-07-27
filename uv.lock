@@ -293,6 +293,7 @@ dependencies = [
     { name = "boto3" },
     { name = "datasets" },
     { name = "huggingface-hub" },
+    { name = "numpy" },
     { name = "shapely" },
     { name = "tqdm" },
 ]
@@ -302,6 +303,7 @@ requires-dist = [
     { name = "boto3", specifier = ">=1.39.14" },
     { name = "datasets", specifier = ">=4.0.0" },
     { name = "huggingface-hub", specifier = ">=0.34.1" },
+    { name = "numpy", specifier = ">=2.3.2" },
     { name = "shapely", specifier = ">=2.1.1" },
     { name = "tqdm", specifier = ">=4.67.1" },
 ]

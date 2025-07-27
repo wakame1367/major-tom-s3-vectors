@@ -8,6 +8,7 @@ dependencies = [
     "boto3>=1.39.14",
     "datasets>=4.0.0",
     "huggingface-hub>=0.34.1",
+    "numpy>=2.3.2",
     "shapely>=2.1.1",
     "tqdm>=4.67.1",
 ]
