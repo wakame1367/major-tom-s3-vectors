@@ -254,10 +254,14 @@ version = "0.1.0"
 source = { virtual = "." }
 dependencies = [
     { name = "datasets" },
+    { name = "huggingface-hub" },
 ]
 
 [package.metadata]
-requires-dist = [{ name = "datasets", specifier = ">=4.0.0" }]
+requires-dist = [
+    { name = "datasets", specifier = ">=4.0.0" },
+    { name = "huggingface-hub", specifier = ">=0.34.1" },
+]
 
 [[package]]
 name = "multidict"
