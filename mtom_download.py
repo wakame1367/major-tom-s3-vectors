@@ -1,69 +1,65 @@
+# mtom_download_geojson.py
 #!/usr/bin/env python
 import argparse, json, sys
-from typing import Optional, Tuple, Set
+from typing import List
 from datasets import load_dataset
+from shapely.geometry import shape, Point
+from shapely.ops import unary_union
+from shapely.prepared import prep
 from tqdm import tqdm
 
-def parse_bbox(bbox_str: Optional[str]) -> Optional[Tuple[float, float, float, float]]:
-    if not bbox_str:
-        return None
-    a = [float(x) for x in bbox_str.split(",")]
-    if len(a) != 4:
-        raise ValueError("bbox must be 'minLon,minLat,maxLon,maxLat'")
-    return (a[0], a[1], a[2], a[3])
-
-def in_bbox(lat: float, lon: float, bbox: Tuple[float, float, float, float]) -> bool:
-    minLon, minLat, maxLon, maxLat = bbox
-    return (minLat <= lat <= maxLat) and (minLon <= lon <= maxLon)
+def load_aoi(geojson_path: str):
+    gj = json.load(open(geojson_path, "r", encoding="utf-8"))
+    # FeatureCollection / Feature / Geometry どれでも受け付け
+    if gj.get("type") == "FeatureCollection":
+        geoms = [shape(feat["geometry"]) for feat in gj["features"]]
+    elif gj.get("type") == "Feature":
+        geoms = [shape(gj["geometry"])]
+    else:
+        geoms = [shape(gj)]
+    union = unary_union(geoms)
+    return prep(union)  # 高速化
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--out", required=True, help="output JSONL path")
-    ap.add_argument("--bbox", help="minLon,minLat,maxLon,maxLat (WGS84)")
-    ap.add_argument("--grid-cells", nargs="*", help="filter by grid_cell IDs (e.g., R111C222)")
-    ap.add_argument("--limit", type=int, default=0, help="max rows (0 = no limit)")
+    ap.add_argument("--geojson", required=True, help="AOI GeoJSON path")
+    ap.add_argument("--out", required=True, help="output JSONL")
+    ap.add_argument("--limit", type=int, default=0)
     args = ap.parse_args()
 
-    bbox = parse_bbox(args.bbox)
-    grid_cells: Set[str] = set(args.grid_cells or [])
-
-    # Stream the HF dataset (no full download)
-    ds = load_dataset("Major-TOM/Core-S2L1C-SSL4EO", streaming=True)  # IterableDataset
+    aoi = load_aoi(args.geojson)
+    ds = load_dataset("Major-TOM/Core-S2L1C-SSL4EO", streaming=True)  # HF からストリーミング
     it = ds["train"] if "train" in ds else ds
 
-    n_written = 0
-    detected_dim = None
-
+    n = 0
+    dim = None
     with open(args.out, "w", encoding="utf-8") as f:
         for row in tqdm(it, desc="streaming"):
-            if grid_cells and row.get("grid_cell") not in grid_cells:
-                continue
             lat, lon = float(row["centre_lat"]), float(row["centre_lon"])
-            if bbox and not in_bbox(lat, lon, bbox):
+            if not aoi.covers(Point(lon, lat)):  # 辺上も含めるなら covers が便利
                 continue
 
             emb = row["embedding"]
-            if detected_dim is None:
-                detected_dim = len(emb)
-                print(f"[info] detected embedding dim = {detected_dim}", file=sys.stderr)
+            if dim is None:
+                dim = len(emb)
+                print(f"[info] detected embedding dim={dim}", file=sys.stderr)
 
             rec = {
                 "id": row["unique_id"],
-                "embedding": emb,
+                "embedding": emb,  # 後段で float32 にキャスト
                 "metadata": {
                     "grid_cell": row.get("grid_cell"),
                     "product_id": row.get("product_id"),
                     "timestamp": row.get("timestamp"),
                     "centre_lat": lat,
-                    "centre_lon": lon,
-                },
+                    "centre_lon": lon
+                }
             }
             f.write(json.dumps(rec, ensure_ascii=False) + "\n")
-            n_written += 1
-            if args.limit and n_written >= args.limit:
+            n += 1
+            if args.limit and n >= args.limit:
                 break
-
-    print(f"[done] wrote {n_written} vectors to {args.out} (dim={detected_dim})")
+    print(f"[done] wrote {n} rows to {args.out} (dim={dim})")
 
 if __name__ == "__main__":
     main()
